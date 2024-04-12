@@ -1,0 +1,7 @@
+system.s3_archive.archive_files:
+  path: 'admin/config/islandora/archive-files'
+  defaults:
+    _title: 'Archive Files'
+    _form: 'Drupal\s3_archive\Form\ArchiveFilesForm'
+  requirements:
+    _permission: 'Delete any file'

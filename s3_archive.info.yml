@@ -1,0 +1,8 @@
+name: 'S3 Archive'
+type: module
+description: 'Archives Original Files to S3 Bucket'
+package: Agile
+core_version_requirement: ^10 || ^11
+dependencies:
+  - islandora:islandora
+  - s3fs:s3fs

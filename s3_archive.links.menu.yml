@@ -1,0 +1,11 @@
+system.s3_archive:
+  title: Archive Original Files
+  parent: system.admin_config_islandora
+  route_name: system.s3_archive.archive_files
+  description: Move Original Files to S3 storage
+
+
+
+
+
+
