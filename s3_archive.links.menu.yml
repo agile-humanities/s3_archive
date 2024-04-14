@@ -9,3 +9,10 @@ system.s3_archive:
 
 
 
+
+s3_archive.settings:
+  title: S3 Archive Settings
+  description: S3 setting for fiel archiving
+  parent: system.admin_config_system
+  route_name: s3_archive.settings
+  weight: 10

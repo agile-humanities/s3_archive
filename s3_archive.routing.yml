@@ -5,3 +5,11 @@ system.s3_archive.archive_files:
     _form: 'Drupal\s3_archive\Form\ArchiveFilesForm'
   requirements:
     _permission: 'Delete any file'
+
+s3_archive.settings:
+  path: '/admin/config/system/settings'
+  defaults:
+    _title: 'S3 Archive Settings'
+    _form: 'Drupal\s3_archive\Form\SettingsForm'
+  requirements:
+    _permission: 'administer site configuration'

@@ -42,6 +42,13 @@ final class ArchiveFilesForm extends FormBase {
   protected $database;
 
   /**
+   * Config settings.
+   *
+   * @var string
+   */
+  const SETTINGS = 's3_archive.settings';
+
+  /**
    * Standard Constructor.
    *
    * @param \Drupal\s3fs\S3fsFileService $s3fs
@@ -106,21 +113,29 @@ final class ArchiveFilesForm extends FormBase {
    * {@inheritdoc}
    */
   public function submitForm(array &$form, FormStateInterface $form_state): void {
+    $config = $this->config(static::SETTINGS);
     $collection = $form_state->getValue('collection');
     $collection_nid = $collection[0]['target_id'];
     $results = $this->getResults($collection_nid);
     foreach ($results as $result) {
-      $source_parts = explode('/', $result->uri);
-      $filename = end($source_parts);
-      $destination = "s3://n_{$result->node}-$filename";
+      $s3_uri = str_replace('fedora://', 's3://', $result->uri);
+      $directory = dirname($s3_uri);
+      $filename = basename($s3_uri);
+      $this->s3fs->mkdir($directory, 509);
+      $destination = "$directory/n_{$result->node}-$filename";
       $new_uri = $this->s3fs->copy($result->uri, $destination);
+      $url_base = $config->get('s3_url') . '/';
+      $new_uri = str_replace('s3://', $url_base, $new_uri);
+      $node = $this->entityTypeManager->getStorage('node')->load($result->node);
+      $node->field_s3_archive_link = $new_uri;
+      $node->save();
       $deletion_candidate = $this->entityTypeManager->getStorage('media')
         ->load($result->media);
       $file = $this->entityTypeManager->getStorage('file')->load($result->fid);
       $file->delete();
       $deletion_candidate->delete();
     }
-    $this->messenger()->addStatus($this->t('All media and files deleted.'));
+    $this->messenger()->addStatus($this->t('All media delete and files moved to S3'));
     $form_state->setRedirect('<front>');
   }
 
