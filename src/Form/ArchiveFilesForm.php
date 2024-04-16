@@ -45,7 +45,6 @@ final class ArchiveFilesForm extends FormBase {
    */
   protected $fileSystem;
 
-
   /**
    * Config settings.
    *
@@ -119,37 +118,23 @@ final class ArchiveFilesForm extends FormBase {
    * {@inheritdoc}
    */
   public function submitForm(array &$form, FormStateInterface $form_state): void {
-    $config = $this->config(static::SETTINGS);
     $collection = $form_state->getValue('collection');
     $collection_nid = $collection[0]['target_id'];
     $results = $this->getResults($collection_nid);
-    $count = 0;
+    $operations = [];
     foreach ($results as $result) {
-      $fedora_file = fopen($result->uri, 'r');
-      $temp_name = basename($result->uri);
-      $temp_file = fopen("/tmp/$temp_name", 'w');
-      stream_copy_to_stream($fedora_file, $temp_file);
-      fclose($fedora_file);
-      fclose($temp_file);
-      $s3_uri = str_replace('fedora://', 's3://', $result->uri);
-      $directory = dirname($s3_uri);
-      $filename = basename($s3_uri);
-      $this->s3fs->mkdir($directory, 509);
-      $destination = "$directory/n_{$result->node}-$filename";
-      $new_uri = $this->s3fs->move("/tmp/$temp_name", $destination);
-      $url_base = $config->get('s3_url') . '/';
-      $new_uri = str_replace('s3://', $url_base, $new_uri);
-      $node = $this->entityTypeManager->getStorage('node')->load($result->node);
-      $node->field_s3_archive_link = $new_uri;
-      $node->save();
-      $deletion_candidate = $this->entityTypeManager->getStorage('media')
-        ->load($result->media);
-      $file = $this->entityTypeManager->getStorage('file')->load($result->fid);
-      $file->delete();
-      $deletion_candidate->delete();
-      $count++;
+      $operations[] = [
+        [$this, 'processResult'],
+        [$result],
+      ];
     }
-    $this->messenger()->addStatus($this->t('@count file(s) have been moved to S3', ['@count' => $count]));
+    $batch = [
+      'title' => $this->t("Archiving files..."),
+      'operations' => $operations,
+      'progress_message' => $this->t('Processed @current out of @total. Estimated time: @estimate.'),
+      'error_message' => $this->t('The process has encountered an error.'),
+    ];
+    batch_set($batch);
   }
 
   /**
@@ -183,6 +168,42 @@ where m.mid = f.entity_id
 SQL;
     $query = $this->database->query($sql);
     return $query->fetchAll();
+  }
+
+  /**
+   * Processes each media and file.
+   *
+   * @param $result
+   *
+   * @return void
+   * @throws \Drupal\Component\Plugin\Exception\InvalidPluginDefinitionException
+   * @throws \Drupal\Component\Plugin\Exception\PluginNotFoundException
+   * @throws \Drupal\Core\Entity\EntityStorageException
+   */
+  public function processResult($result) {
+    $config = $this->config(static::SETTINGS);
+    $fedora_file = fopen($result->uri, 'r');
+    $temp_name = basename($result->uri);
+    $temp_file = fopen("/tmp/$temp_name", 'w');
+    stream_copy_to_stream($fedora_file, $temp_file);
+    fclose($fedora_file);
+    fclose($temp_file);
+    $s3_uri = str_replace('fedora://', 's3://', $result->uri);
+    $directory = dirname($s3_uri);
+    $filename = basename($s3_uri);
+    $this->s3fs->mkdir($directory, 509);
+    $destination = "$directory/n_{$result->node}-$filename";
+    $new_uri = $this->s3fs->move("/tmp/$temp_name", $destination);
+    $url_base = $config->get('s3_url') . '/';
+    $new_uri = str_replace('s3://', $url_base, $new_uri);
+    $node = $this->entityTypeManager->getStorage('node')->load($result->node);
+    $node->field_s3_archive_link = $new_uri;
+    $node->save();
+    $deletion_candidate = $this->entityTypeManager->getStorage('media')
+      ->load($result->media);
+    $file = $this->entityTypeManager->getStorage('file')->load($result->fid);
+    $file->delete();
+    $deletion_candidate->delete();
   }
 
 }
