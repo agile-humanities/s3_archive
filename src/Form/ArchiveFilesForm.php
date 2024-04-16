@@ -67,7 +67,6 @@ final class ArchiveFilesForm extends FormBase {
     $this->entityTypeManager = $entity_type_manager;
     $this->utils = $utils;
     $this->database = $database;
-    $this->fileSystem = $file_system;
   }
 
   /**
@@ -124,6 +123,7 @@ final class ArchiveFilesForm extends FormBase {
     $collection = $form_state->getValue('collection');
     $collection_nid = $collection[0]['target_id'];
     $results = $this->getResults($collection_nid);
+    $count = 0;
     foreach ($results as $result) {
       $fedora_file = fopen($result->uri, 'r');
       $temp_name = basename($result->uri);
@@ -147,9 +147,9 @@ final class ArchiveFilesForm extends FormBase {
       $file = $this->entityTypeManager->getStorage('file')->load($result->fid);
       $file->delete();
       $deletion_candidate->delete();
+      $count++;
     }
-    $this->messenger()->addStatus($this->t('All media delete and files moved to S3'));
-    $form_state->setRedirect('<front>');
+    $this->messenger()->addStatus($this->t('@count file(s) have been moved to S3', ['@count' => $count]));
   }
 
   /**
@@ -168,13 +168,11 @@ final class ArchiveFilesForm extends FormBase {
     $sql = <<<"SQL"
     select o.field_media_of_target_id as node, m.mid as media, fm.fid, fm.uri as uri
 from media m,
-     media__field_mime_type t,
      media__field_media_file f,
      media__field_media_of o,
      file_managed fm,
      media__field_media_use mu
-where m.mid = t.entity_id
-  and m.mid = f.entity_id
+where m.mid = f.entity_id
   and m.mid = o.entity_id
   and m.mid = mu.entity_id
   and f.field_media_file_target_id = fm.fid
