@@ -8,10 +8,7 @@ use Drupal\Core\Database\Connection;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
 use Drupal\Core\Form\FormBase;
 use Drupal\Core\Form\FormStateInterface;
-use Drupal\file\Entity\File;
-use Drupal\file\FileInterface;
 use Drupal\islandora\IslandoraUtils;
-use Drupal\media\MediaInterface;
 use Drupal\s3fs\S3fsFileService;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 
@@ -42,6 +39,14 @@ final class ArchiveFilesForm extends FormBase {
   protected $database;
 
   /**
+   * Provides helpers to operate on files and stream wrappers.
+   *
+   * @var \Drupal\Core\File\FileSystemInterface
+   */
+  protected $fileSystem;
+
+
+  /**
    * Config settings.
    *
    * @var string
@@ -55,12 +60,14 @@ final class ArchiveFilesForm extends FormBase {
    * @param \Drupal\Core\Entity\EntityTypeManagerInterface $entity_type_manager
    * @param \Drupal\islandora\IslandoraUtils $utils
    * @param \Drupal\Core\Database\Connection $database
+   *   *.
    */
   public function __construct(S3fsFileService $s3fs, EntityTypeManagerInterface $entity_type_manager, IslandoraUtils $utils, Connection $database) {
     $this->s3fs = $s3fs;
     $this->entityTypeManager = $entity_type_manager;
     $this->utils = $utils;
     $this->database = $database;
+    $this->fileSystem = $file_system;
   }
 
   /**
@@ -118,12 +125,18 @@ final class ArchiveFilesForm extends FormBase {
     $collection_nid = $collection[0]['target_id'];
     $results = $this->getResults($collection_nid);
     foreach ($results as $result) {
+      $fedora_file = fopen($result->uri, 'r');
+      $temp_name = basename($result->uri);
+      $temp_file = fopen("/tmp/$temp_name", 'w');
+      stream_copy_to_stream($fedora_file, $temp_file);
+      fclose($fedora_file);
+      fclose($temp_file);
       $s3_uri = str_replace('fedora://', 's3://', $result->uri);
       $directory = dirname($s3_uri);
       $filename = basename($s3_uri);
       $this->s3fs->mkdir($directory, 509);
       $destination = "$directory/n_{$result->node}-$filename";
-      $new_uri = $this->s3fs->copy($result->uri, $destination);
+      $new_uri = $this->s3fs->move("/tmp/$temp_name", $destination);
       $url_base = $config->get('s3_url') . '/';
       $new_uri = str_replace('s3://', $url_base, $new_uri);
       $node = $this->entityTypeManager->getStorage('node')->load($result->node);
@@ -145,6 +158,7 @@ final class ArchiveFilesForm extends FormBase {
    * @param $collection_id
    *
    * @return array
+   *
    * @throws \Drupal\Component\Plugin\Exception\InvalidPluginDefinitionException
    * @throws \Drupal\Component\Plugin\Exception\PluginNotFoundException
    */
