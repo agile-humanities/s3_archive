@@ -53,6 +53,13 @@ final class ArchiveFilesForm extends FormBase {
   const SETTINGS = 's3_archive.settings';
 
   /**
+   * Array of terms for nodes with children.
+   *
+   * @var array
+   */
+  protected $collection_terms;
+
+  /**
    * Standard Constructor.
    *
    * @param \Drupal\s3fs\S3fsFileService $s3fs
@@ -66,6 +73,7 @@ final class ArchiveFilesForm extends FormBase {
     $this->entityTypeManager = $entity_type_manager;
     $this->utils = $utils;
     $this->database = $database;
+    $this->collection_terms = [];
   }
 
   /**
@@ -118,9 +126,26 @@ final class ArchiveFilesForm extends FormBase {
    * {@inheritdoc}
    */
   public function submitForm(array &$form, FormStateInterface $form_state): void {
+    $term_uris = [
+      'http://purl.org/dc/dcmitype/Collection',
+      'http://vocab.getty.edu/aat/300242735',
+      'https://schema.org/Newspaper',
+      'https://schema.org/Book',
+      'https://schema.org/PublicationIssue',
+    ];
+    foreach ($term_uris as $uri) {
+      $term = $this->utils->getTermForUri($uri);
+      $this->collection_terms[] = $term->id();
+    }
     $collection = $form_state->getValue('collection');
     $collection_nid = $collection[0]['target_id'];
-    $results = $this->getResults($collection_nid);
+    $containers = [$collection_nid];
+    $subcollections = [$collection_nid];
+    while (count($subcollections) > 0) {
+      $subcollections = $this->getCollectors($subcollections);
+      $containers = array_merge($subcollections, $containers);
+    }
+    $results = $this->getResults($containers);
     $operations = [];
     foreach ($results as $result) {
       $operations[] = [
@@ -140,14 +165,16 @@ final class ArchiveFilesForm extends FormBase {
   /**
    * Gets results from database.
    *
-   * @param $collection_id
+   * @param array $collection_ids
+   *   Nids of all nodes with children.
    *
    * @return array
+   *   All children of collection nodes.
    *
    * @throws \Drupal\Component\Plugin\Exception\InvalidPluginDefinitionException
    * @throws \Drupal\Component\Plugin\Exception\PluginNotFoundException
    */
-  protected function getResults($collection_id): array {
+  protected function getResults($collection_ids): array {
     $originalFileTerm = $this->utils->getTermForUri('http://pcdm.org/use#OriginalFile');
     $tid = $originalFileTerm->id();
     $sql = <<<"SQL"
@@ -164,18 +191,43 @@ where m.mid = f.entity_id
   and mu.field_media_use_target_id = $tid
   and o.field_media_of_target_id in (select entity_id
                                      from node__field_member_of
-                                     where field_member_of_target_id = $collection_id);
+                                     where field_member_of_target_id in (:collection_ids[]));
 SQL;
-    $query = $this->database->query($sql);
+    $query = $this->database->query($sql, [':collection_ids[]' => $collection_ids]);
     return $query->fetchAll();
   }
 
   /**
+   * Gets all sub nodes with children.
+   *
+   * @param array $parents
+   *   The parent nodes.
+   *
+   * @return array
+   *   The child nodes.
+   */
+  protected function getCollectors($parents) {
+    $sql = <<<"SQL"
+    select n.nid
+from node n,
+     node__field_member_of me,
+     node__field_model mo
+where n.nid = mo.entity_id
+    and n.nid = me.entity_id
+    and me.field_member_of_target_id in (:parents[])
+    and mo.field_model_target_id in (:terms[]);
+SQL;
+    $query = $this->database->query($sql, [':parents[]' => $parents, ':terms[]' => $this->collection_terms]);
+    return $query->fetchCol();
+  }
+  /**
    * Processes each media and file.
    *
-   * @param $result
+   * @param array $result
+   *   Object with nid, mid, fid and uri.
    *
    * @return void
+   *
    * @throws \Drupal\Component\Plugin\Exception\InvalidPluginDefinitionException
    * @throws \Drupal\Component\Plugin\Exception\PluginNotFoundException
    * @throws \Drupal\Core\Entity\EntityStorageException
