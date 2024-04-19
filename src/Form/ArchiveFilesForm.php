@@ -18,7 +18,7 @@ use Symfony\Component\DependencyInjection\ContainerInterface;
 final class ArchiveFilesForm extends FormBase {
 
   /**
-   * The S# Bucket connection.
+   * The S3 Bucket connection.
    *
    * @var \Drupal\s3fs\S3fsFileService
    */
@@ -148,6 +148,7 @@ final class ArchiveFilesForm extends FormBase {
     $results = $this->getResults($containers);
     $operations = [];
     foreach ($results as $result) {
+      $this->processResult($result);
       $operations[] = [
         [$this, 'processResult'],
         [$result],
@@ -236,7 +237,7 @@ SQL;
     $config = $this->config(static::SETTINGS);
     $fedora_file = fopen($result->uri, 'r');
     $temp_name = basename($result->uri);
-    $temp_file = fopen("/tmp/$temp_name", 'w');
+    $temp_file = fopen("public://$temp_name", 'w');
     stream_copy_to_stream($fedora_file, $temp_file);
     fclose($fedora_file);
     fclose($temp_file);
@@ -245,7 +246,7 @@ SQL;
     $filename = basename($s3_uri);
     $this->s3fs->mkdir($directory, 509);
     $destination = "$directory/n_{$result->node}-$filename";
-    $new_uri = $this->s3fs->move("/tmp/$temp_name", $destination);
+    $new_uri = $this->s3fs->move("public://$temp_name", $destination);
     $url_base = $config->get('s3_url') . '/';
     $new_uri = str_replace('s3://', $url_base, $new_uri);
     $node = $this->entityTypeManager->getStorage('node')->load($result->node);
