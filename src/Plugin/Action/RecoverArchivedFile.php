@@ -8,7 +8,7 @@ use Drupal\Core\Access\AccessResultInterface;
 use Drupal\Core\Action\ActionBase;
 use Drupal\Core\Entity\ContentEntityInterface;
 use Drupal\Core\Entity\EntityTypeManagerInterface;
-use Drupal\Core\File\FileSystemInterface;
+use Drupal\Core\File\FileExists;
 use Drupal\Core\Plugin\ContainerFactoryPluginInterface;
 use Drupal\Core\Session\AccountInterface;
 use Drupal\file\FileRepository;
@@ -88,24 +88,25 @@ final class RecoverArchivedFile extends ActionBase implements ContainerFactoryPl
     $originalFileTerm = $this->utils->getTermForUri('http://pcdm.org/use#OriginalFile');
     $tid = $originalFileTerm->id();
     $s3_url = $entity->get('field_s3_archive_link')->uri;
-    $name_parts = explode('-', $s3_url);
-    $filename = end($name_parts);
-    $image_data= file_get_contents($s3_url);
-    $image = $this->fileRepository->writeData($image_data, "public://temp_image_file", FileSystemInterface::EXISTS_REPLACE);
-    $image_media = Media::create([
-      'name' => $entity->getTitle(),
-      'bundle' => 'file',
-      'langcode' => 'en',
-      'status' => 1,
-      'field_media_file' => [
-        'target_id' => $image->id(),
-        'title' => $filename,
-      ],
-      'field_media_use' => $tid,
-      'field_media_of' => $entity->id(),
-      'field_mime_type' => 'image/tif',
-    ]);
-    $image_media->save();
+    if ($s3_url) {
+      $name_parts = explode('-', $s3_url);
+      $filename = end($name_parts);
+      $image_data = file_get_contents($s3_url);
+      $image = $this->fileRepository->writeData($image_data, "public://temp_image_file", FileExists::Replace);
+      $image_media = Media::create([
+        'name' => $entity->getTitle(),
+        'bundle' => 'file',
+        'langcode' => 'en',
+        'status' => 1,
+        'field_media_file' => [
+          'target_id' => $image->id(),
+          'title' => $filename,
+        ],
+        'field_media_use' => $tid,
+        'field_media_of' => $entity->id(),
+        'field_mime_type' => 'image/tif',
+      ]);
+      $image_media->save();
+    }
   }
-
 }

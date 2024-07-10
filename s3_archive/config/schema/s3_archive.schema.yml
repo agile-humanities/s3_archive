@@ -1,8 +1,0 @@
-# Schema for the configuration files of the S3 Archive module.
-s3_archive.settings:
-  type: config_object
-  label: 'S3 Archive settings'
-  mapping:
-    example:
-      type: string
-      label: 'Example'
