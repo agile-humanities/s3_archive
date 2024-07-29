@@ -10,6 +10,7 @@ use Drupal\Core\Form\FormBase;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\islandora\IslandoraUtils;
 use Drupal\s3fs\S3fsFileService;
+use Psr\Log\LoggerInterface;
 use Symfony\Component\DependencyInjection\ContainerInterface;
 
 /**
@@ -39,6 +40,13 @@ final class ArchiveFilesForm extends FormBase {
   protected $database;
 
   /**
+   * The logger service.
+   *
+   * @var \Psr\Log\LoggerInterface
+   */
+  protected $logger;
+
+  /**
    * Provides helpers to operate on files and stream wrappers.
    *
    * @var \Drupal\Core\File\FileSystemInterface
@@ -57,23 +65,29 @@ final class ArchiveFilesForm extends FormBase {
    *
    * @var array
    */
-  protected $collection_terms;
+  protected $collectionTerms;
 
   /**
    * Standard Constructor.
    *
    * @param \Drupal\s3fs\S3fsFileService $s3fs
+   *   The S3 Filesystem.
    * @param \Drupal\Core\Entity\EntityTypeManagerInterface $entity_type_manager
+   *   The entity type manager.
    * @param \Drupal\islandora\IslandoraUtils $utils
+   *   The Islandora Untilities.
    * @param \Drupal\Core\Database\Connection $database
-   *   *.
+   *   The database connection.
+   * @param Psr\Log\LoggerInterface\ $logger
+   *   The logger.
    */
-  public function __construct(S3fsFileService $s3fs, EntityTypeManagerInterface $entity_type_manager, IslandoraUtils $utils, Connection $database) {
+  public function __construct(S3fsFileService $s3fs, EntityTypeManagerInterface $entity_type_manager, IslandoraUtils $utils, Connection $database, LoggerInterface $logger) {
     $this->s3fs = $s3fs;
     $this->entityTypeManager = $entity_type_manager;
     $this->utils = $utils;
     $this->database = $database;
-    $this->collection_terms = [];
+    $this->logger = $logger;
+    $this->collectionTerms = [];
   }
 
   /**
@@ -85,6 +99,7 @@ final class ArchiveFilesForm extends FormBase {
       $container->get('entity_type.manager'),
       $container->get('islandora.utils'),
       $container->get('database'),
+      $container->get('logger.channel.islandora'),
     );
   }
 
@@ -135,7 +150,7 @@ final class ArchiveFilesForm extends FormBase {
     ];
     foreach ($term_uris as $uri) {
       $term = $this->utils->getTermForUri($uri);
-      $this->collection_terms[] = $term->id();
+      $this->collectionTerms[] = $term->id();
     }
     $collection = $form_state->getValue('collection');
     $collection_nid = $collection[0]['target_id'];
@@ -147,8 +162,8 @@ final class ArchiveFilesForm extends FormBase {
     }
     $results = $this->getResults($containers);
     $operations = [];
+    $this->logger->info("Processing " . count($results));
     foreach ($results as $result) {
-      $this->processResult($result);
       $operations[] = [
         [$this, 'processResult'],
         [$result],
@@ -218,16 +233,18 @@ where n.nid = mo.entity_id
     and me.field_member_of_target_id in (:parents[])
     and mo.field_model_target_id in (:terms[]);
 SQL;
-    $query = $this->database->query($sql, [':parents[]' => $parents, ':terms[]' => $this->collection_terms]);
+    $query = $this->database->query($sql, [':parents[]' => $parents, ':terms[]' => $this->collectionTerms]);
     return $query->fetchCol();
   }
+
   /**
    * Processes each media and file.
    *
-   * @param array $result
+   * @param object $result
    *   Object with nid, mid, fid and uri.
    *
    * @return void
+   *   Nothing is returned.
    *
    * @throws \Drupal\Component\Plugin\Exception\InvalidPluginDefinitionException
    * @throws \Drupal\Component\Plugin\Exception\PluginNotFoundException
@@ -236,9 +253,14 @@ SQL;
   public function processResult($result) {
     $config = $this->config(static::SETTINGS);
     $fedora_file = fopen($result->uri, 'r');
+    if (!$fedora_file) {
+      return;
+    }
     $temp_name = basename($result->uri);
     $temp_file = fopen("public://$temp_name", 'w');
-    stream_copy_to_stream($fedora_file, $temp_file);
+    if ($fedora_file) {
+      stream_copy_to_stream($fedora_file, $temp_file);
+    }
     fclose($fedora_file);
     fclose($temp_file);
     $s3_uri = str_replace('fedora://', 's3://', $result->uri);
@@ -246,17 +268,25 @@ SQL;
     $filename = basename($s3_uri);
     $this->s3fs->mkdir($directory, 509);
     $destination = "$directory/n_{$result->node}-$filename";
-    $new_uri = $this->s3fs->move("public://$temp_name", $destination);
-    $url_base = $config->get('s3_url') . '/';
-    $new_uri = str_replace('s3://', $url_base, $new_uri);
-    $node = $this->entityTypeManager->getStorage('node')->load($result->node);
-    $node->field_s3_archive_link = $new_uri;
-    $node->save();
-    $deletion_candidate = $this->entityTypeManager->getStorage('media')
-      ->load($result->media);
-    $file = $this->entityTypeManager->getStorage('file')->load($result->fid);
-    $file->delete();
-    $deletion_candidate->delete();
+    $new_uri = FALSE;
+    try {
+      $new_uri = $this->s3fs->move("public://$temp_name", $destination);
+    }
+    catch (\Exception $e) {
+      $this->logger->error('An error occurred: @message', ['@message' => $e->getMessage()]);
+    }
+    if ($new_uri) {
+      $url_base = $config->get('s3_url') . '/';
+      $new_uri = str_replace('s3://', $url_base, $new_uri);
+      $node = $this->entityTypeManager->getStorage('node')->load($result->node);
+      $node->field_s3_archive_link = $new_uri;
+      $node->save();
+      $deletion_candidate = $this->entityTypeManager->getStorage('media')
+        ->load($result->media);
+      $file = $this->entityTypeManager->getStorage('file')->load($result->fid);
+      $file->delete();
+      $deletion_candidate->delete();
+    }
   }
 
 }

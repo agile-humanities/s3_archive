@@ -2,19 +2,21 @@
 
 namespace Drupal\s3_archive\Drush\Commands;
 
+use Drupal\Core\Config\ConfigFactoryInterface;
 use Drupal\Core\Database\Connection;
 use Drupal\Core\Entity\EntityTypeManager;
+use Drupal\Core\StringTranslation\StringTranslationTrait;
 use Drupal\islandora\IslandoraUtils;
+use Drupal\s3fs\S3fsFileSystemD103;
 use Drush\Attributes as CLI;
 use Drush\Commands\DrushCommands;
 use Symfony\Component\DependencyInjection\ContainerInterface;
-use Drupal\Core\Config\ConfigFactoryInterface;
-use Drupal\s3fs\S3fsFileSystemD103;
 
 /**
  * A Drush commandfile.
  */
 final class S3ArchiveCommands extends DrushCommands {
+  use StringTranslationTrait;
   const SETTINGS = 's3_archive.settings';
 
   /**
@@ -63,23 +65,34 @@ where m.mid = f.entity_id
   and m.mid = mu.entity_id
   and f.field_media_file_target_id = fm.fid
   and mu.field_media_use_target_id = $tid
-;
 SQL;
     $query = $this->connection->query($sql);
     $results = $query->fetchAll();
     $todo = count($results);
     $this->logger()->success("$todo results to be processed");
+    $operations = [];
     foreach ($results as $result) {
-      $this->processResult($result);
+      $operations[] = [
+        [$this, 'processResult'],
+        [$result],
+      ];
     }
+    $batch = [
+      'title' => $this->t('Migrating Original Files'),
+      'operations' => $operations,
+    ];
+    batch_set($batch);
+    drush_backend_batch_process();
   }
 
   /**
    * Processes candidate nodes.
    *
    * @param $result
+   *   Candidate node.
    *
    * @return void
+   *
    * @throws \Drupal\Component\Plugin\Exception\InvalidPluginDefinitionException
    * @throws \Drupal\Component\Plugin\Exception\PluginNotFoundException
    * @throws \Drupal\Core\Entity\EntityStorageException
@@ -95,7 +108,7 @@ SQL;
     $s3_uri = str_replace('fedora://', 's3://', $result->uri);
     $directory = dirname($s3_uri);
     $filename = basename($s3_uri);
-    $this->s3fsFileSystemD103->mkdir("$directory", 509,true);
+    $this->s3fsFileSystemD103->mkdir("$directory", 509, TRUE);
     $destination = "$directory/n_{$result->node}-$filename";
     $new_uri = $this->s3fsFileSystemD103->move("public://$temp_name", $destination);
     $url_base = $config->get('s3_url') . '/';
@@ -109,4 +122,5 @@ SQL;
     $file->delete();
     $deletion_candidate->delete();
   }
+
 }

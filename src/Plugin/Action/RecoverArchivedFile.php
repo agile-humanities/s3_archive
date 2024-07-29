@@ -51,7 +51,7 @@ final class RecoverArchivedFile extends ActionBase implements ContainerFactoryPl
     $plugin_definition,
     private readonly IslandoraUtils $utils,
     private readonly EntityTypeManagerInterface $entityTypeManager,
-    private readonly FileRepository $fileRepository
+    private readonly FileRepository $fileRepository,
   ) {
     parent::__construct($configuration, $plugin_id, $plugin_definition);
   }
@@ -109,4 +109,5 @@ final class RecoverArchivedFile extends ActionBase implements ContainerFactoryPl
       $image_media->save();
     }
   }
+
 }
