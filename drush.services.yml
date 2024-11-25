@@ -1,6 +1,6 @@
 services:
   s3archive.commands:
     class: Drupal\s3_archive\Drush\Commands\S3ArchiveCommands
-    arguments: ['@token', '@database', '@islandora.utils', '@entity_type.manager', '@config.factory', '@s3fsfileservice']
+    arguments: ['@database', '@islandora.utils', '@entity_type.manager', '@config.factory', '@s3fsfileservice']
     tags:
       - { name: drush.command }
