@@ -7,7 +7,7 @@ use Drupal\Core\Database\Connection;
 use Drupal\Core\Entity\EntityTypeManager;
 use Drupal\Core\StringTranslation\StringTranslationTrait;
 use Drupal\islandora\IslandoraUtils;
-use Drupal\s3fs\S3fsFileSystemD103;
+use Drupal\s3fs\S3fsFileSystem;
 use Drush\Attributes as CLI;
 use Drush\Commands\DrushCommands;
 use Symfony\Component\DependencyInjection\ContainerInterface;
@@ -27,7 +27,7 @@ final class S3ArchiveCommands extends DrushCommands {
     private readonly IslandoraUtils $utils,
     private readonly EntityTypeManager $entityTypeManager,
     private readonly ConfigFactoryInterface $configFactory,
-    private readonly S3fsFileSystemD103 $s3fsFileSystemD103,
+    private readonly S3fsFileSystemD103 $s3fsFileSystem,
   ) {
     parent::__construct();
   }
