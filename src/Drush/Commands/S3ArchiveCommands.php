@@ -27,7 +27,7 @@ final class S3ArchiveCommands extends DrushCommands {
     private readonly IslandoraUtils $utils,
     private readonly EntityTypeManager $entityTypeManager,
     private readonly ConfigFactoryInterface $configFactory,
-    private readonly S3fsFileSystemD103 $s3fsFileSystem,
+    private readonly S3fsFileSystem $s3fsFileSystem,
   ) {
     parent::__construct();
   }
@@ -108,9 +108,9 @@ SQL;
     $s3_uri = str_replace('fedora://', 's3://', $result->uri);
     $directory = dirname($s3_uri);
     $filename = basename($s3_uri);
-    $this->s3fsFileSystemD103->mkdir("$directory", 509, TRUE);
+    $this->s3fsFileSystem->mkdir("$directory", 509, TRUE);
     $destination = "$directory/n_{$result->node}-$filename";
-    $new_uri = $this->s3fsFileSystemD103->move("public://$temp_name", $destination);
+    $new_uri = $this->s3fsFileSystem->move("public://$temp_name", $destination);
     $url_base = $config->get('s3_url') . '/';
     $new_uri = str_replace('s3://', $url_base, $new_uri);
     $node = $this->entityTypeManager->getStorage('node')->load($result->node);
